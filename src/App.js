@@ -50,6 +50,9 @@ const StyledTableRow = styled(TableRow)({
 
 const availableTags = ["android", "ios", "flutter", "kiosk-old", "kiosk-new", "online", "branch"];
 
+// const serverUrl = "http://localhost:3030/"
+const serverUrl = "https://translations-system.onrender.com/"
+
 function App() {
   const [translations, setTranslations] = useState([]);
   const [filteredTranslations, setFilteredTranslations] = useState([]);
@@ -71,7 +74,7 @@ function App() {
   }, []);
 
   const fetchTranslations = async () => {
-    const response = await axios.get('http://localhost:3030/api/translations');
+    const response = await axios.get(serverUrl+'api/translations');
     setTranslations(response.data.data);
     setFilteredTranslations(response.data.data); // Initialize filteredTranslations
   };
@@ -79,7 +82,7 @@ function App() {
   const debouncedCheckEnglishTranslation = useCallback(
     _.debounce(async (english, cancelToken) => {
       try {
-        const response = await axios.get(`http://localhost:3030/api/search-english/${english}`, {
+        const response = await axios.get(serverUrl+`api/search-english/${english}`, {
           cancelToken: cancelToken.token,
         });
         setExistingTranslation(response.data); // Set existing translation if found
@@ -116,19 +119,19 @@ function App() {
     }
 
     // If changes were made, proceed with the API call
-    await axios.put(`http://localhost:3030/api/translation/${key}`, editing);
+    await axios.put(serverUrl+`api/translation/${key}`, editing);
     fetchTranslations();
     setEditing(null);
     toast.success("Translation updated successfully!");  // Show success toast
   };
 
   const deleteTranslation = async (key) => {
-    await axios.delete(`http://localhost:3030/api/translation/${key}`);
+    await axios.delete(serverUrl+`api/translation/${key}`);
     fetchTranslations();
   };
 
   const addNewTranslation = async () => {
-    await axios.put(`http://localhost:3030/api/translation/${newTranslation.key}`, newTranslation);
+    await axios.put(serverUrl+`api/translation/${newTranslation.key}`, newTranslation);
     fetchTranslations();
     setNewTranslation({ key: '', english: '', arabic: '', tags: [] });
     setExistingTranslation(null); // Reset existing translation state after saving
@@ -161,7 +164,7 @@ function App() {
     }
 
     try {
-      const response = await axios.post('http://localhost:3030/api/bulk-update', {
+      const response = await axios.post(serverUrl+'api/bulk-update', {
         englishJson: JSON.parse(englishJson),
         arabicJson: JSON.parse(arabicJson),
         tags: bulkUploadTags, // Include selected tags in the request
@@ -187,7 +190,7 @@ function App() {
     formData.append('arabicJson', files[1]);
 
     try {
-      const response = await axios.post('http://localhost:3030/api/upload-json', formData, {
+      const response = await axios.post(serverUrl+'api/upload-json', formData, {
         params: { tags: bulkUploadTags }, // Pass tags as query parameters
       });
       setMessage(response.data.message);
@@ -209,7 +212,7 @@ function App() {
     formData.append('excelFile', excelFile);
 
     try {
-      const response = await axios.post('http://localhost:3030/api/upload-excel', formData, {
+      const response = await axios.post(serverUrl+'api/upload-excel', formData, {
         params: { tags: bulkUploadTags }, // Pass tags as query parameters
       });
       setMessage(response.data.message);
