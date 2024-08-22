@@ -50,8 +50,8 @@ const StyledTableRow = styled(TableRow)({
 
 const availableTags = ["android", "ios", "flutter", "kiosk-old", "kiosk-new", "online", "branch"];
 
-// const serverUrl = "http://localhost:3030/"
-const serverUrl = "https://translations-system.onrender.com/"
+// const serverUrl = "http://localhost:3030/";
+const serverUrl = "https://translations-system.onrender.com/";
 
 function App() {
   const [translations, setTranslations] = useState([]);
@@ -63,29 +63,39 @@ function App() {
   const [arabicJson, setArabicJson] = useState('');
   const [excelFile, setExcelFile] = useState(null);
   const [message, setMessage] = useState('');
-  const [openBulkUpload, setOpenBulkUpload] = useState(false); // State to control bulk upload modal
-  const [openAddTranslation, setOpenAddTranslation] = useState(false); // State to control add translation modal
-  const [existingTranslation, setExistingTranslation] = useState(null); // State for existing translation check
-  const [bulkUploadTags, setBulkUploadTags] = useState([]); // Tags for bulk upload
-  const [cancelTokenSource, setCancelTokenSource] = useState(null); // State to store cancel token
+  const [openBulkUpload, setOpenBulkUpload] = useState(false);
+  const [openAddTranslation, setOpenAddTranslation] = useState(false);
+  const [existingTranslation, setExistingTranslation] = useState(null);
+  const [bulkUploadTags, setBulkUploadTags] = useState([]);
+  const [cancelTokenSource, setCancelTokenSource] = useState(null);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);  // State for delete confirmation dialog
+  const [deleteKey, setDeleteKey] = useState(null);  // Key of the translation to be deleted
 
   useEffect(() => {
     fetchTranslations();
   }, []);
 
   const fetchTranslations = async () => {
-    const response = await axios.get(serverUrl+'api/translations');
-    setTranslations(response.data.data);
-    setFilteredTranslations(response.data.data); // Initialize filteredTranslations
+    const response = await axios.get(serverUrl + 'api/translations');
+    const sortedTranslations = response.data.data
+      .sort((a, b) => b.version - a.version)  // Sort by version (timestamp) in descending order
+      .sort((a, b) => {
+        // Sort by the presence of Arabic translation (translations without Arabic come first)
+        if (!a.arabic || a.arabic === '') return -1;
+        if (!b.arabic || b.arabic === '') return 1;
+        return 0;
+    });
+    setTranslations(sortedTranslations);
+    setFilteredTranslations(sortedTranslations);
   };
 
   const debouncedCheckEnglishTranslation = useCallback(
     _.debounce(async (english, cancelToken) => {
       try {
-        const response = await axios.get(serverUrl+`api/search-english/${english}`, {
+        const response = await axios.get(serverUrl + `api/search-english/${english}`, {
           cancelToken: cancelToken.token,
         });
-        setExistingTranslation(response.data); // Set existing translation if found
+        setExistingTranslation(response.data);
         setNewTranslation({
           ...newTranslation,
           english: response.data.english,
@@ -97,46 +107,56 @@ function App() {
         if (axios.isCancel(error)) {
           console.log('Previous request canceled', error.message);
         } else {
-          setExistingTranslation(null); // Reset if no existing translation found
+          setExistingTranslation(null);
         }
       }
-    }, 1000), // Adjust the debounce delay as needed
+    }, 1000),
     [newTranslation]
   );
 
   const saveTranslation = async (key) => {
     const originalTranslation = translations.find((item) => item.key === key);
 
-    // Check if any changes were made
     if (
       originalTranslation.english === editing.english &&
       originalTranslation.arabic === editing.arabic &&
       JSON.stringify(originalTranslation.tags) === JSON.stringify(editing.tags)
     ) {
-      // No changes were made, so do not call the API or update the version
       setEditing(null);
       return;
     }
 
-    // If changes were made, proceed with the API call
-    await axios.put(serverUrl+`api/translation/${key}`, editing);
+    await axios.put(serverUrl + `api/translation/${key}`, editing);
     fetchTranslations();
     setEditing(null);
-    toast.success("Translation updated successfully!");  // Show success toast
+    toast.success("Translation updated successfully!");
   };
 
-  const deleteTranslation = async (key) => {
-    await axios.delete(serverUrl+`api/translation/${key}`);
+  const handleDeleteClick = (key) => {
+    setDeleteKey(key);
+    setDeleteConfirmationOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    await axios.delete(serverUrl + `api/translation/${deleteKey}`);
     fetchTranslations();
+    setDeleteConfirmationOpen(false);
+    setDeleteKey(null);
+    toast.success("Translation deleted successfully!");
+  };
+
+  const cancelDelete = () => {
+    setDeleteConfirmationOpen(false);
+    setDeleteKey(null);
   };
 
   const addNewTranslation = async () => {
-    await axios.put(serverUrl+`api/translation/${newTranslation.key}`, newTranslation);
+    await axios.put(serverUrl + `api/translation/${newTranslation.key}`, newTranslation);
     fetchTranslations();
     setNewTranslation({ key: '', english: '', arabic: '', tags: [] });
-    setExistingTranslation(null); // Reset existing translation state after saving
-    setOpenAddTranslation(false); // Close dialog on success
-    toast.success("Translation added successfully!");  // Show success toast
+    setExistingTranslation(null);
+    setOpenAddTranslation(false);
+    toast.success("Translation added successfully!");
   };
 
   const handleSearch = (e) => {
@@ -164,15 +184,15 @@ function App() {
     }
 
     try {
-      const response = await axios.post(serverUrl+'api/bulk-update', {
+      const response = await axios.post(serverUrl + 'api/bulk-update', {
         englishJson: JSON.parse(englishJson),
         arabicJson: JSON.parse(arabicJson),
-        tags: bulkUploadTags, // Include selected tags in the request
+        tags: bulkUploadTags,
       });
       setMessage(response.data.message);
       fetchTranslations();
-      setOpenBulkUpload(false); // Close dialog on success
-      toast.success("Bulk upload successful!");  // Show success toast
+      setOpenBulkUpload(false);
+      toast.success("Bulk upload successful!");
     } catch (error) {
       setMessage(error.response?.data?.error || 'Failed to upload JSON data.');
     }
@@ -190,13 +210,13 @@ function App() {
     formData.append('arabicJson', files[1]);
 
     try {
-      const response = await axios.post(serverUrl+'api/upload-json', formData, {
-        params: { tags: bulkUploadTags }, // Pass tags as query parameters
+      const response = await axios.post(serverUrl + 'api/upload-json', formData, {
+        params: { tags: bulkUploadTags },
       });
       setMessage(response.data.message);
       fetchTranslations();
-      setOpenBulkUpload(false); // Close dialog on success
-      toast.success("Bulk upload successful!");  // Show success toast
+      setOpenBulkUpload(false);
+      toast.success("Bulk upload successful!");
     } catch (error) {
       setMessage(error.response?.data?.error || 'Failed to upload JSON files.');
     }
@@ -212,13 +232,13 @@ function App() {
     formData.append('excelFile', excelFile);
 
     try {
-      const response = await axios.post(serverUrl+'api/upload-excel', formData, {
-        params: { tags: bulkUploadTags }, // Pass tags as query parameters
+      const response = await axios.post(serverUrl + 'api/upload-excel', formData, {
+        params: { tags: bulkUploadTags },
       });
       setMessage(response.data.message);
       fetchTranslations();
-      setOpenBulkUpload(false); // Close dialog on success
-      toast.success("Bulk upload successful!");  // Show success toast
+      setOpenBulkUpload(false);
+      toast.success("Bulk upload successful!");
     } catch (error) {
       setMessage(error.response?.data?.error || 'Failed to upload Excel file.');
     }
@@ -270,7 +290,6 @@ function App() {
   const handleEnglishChange = (e) => {
     const english = e.target.value;
 
-    // Cancel the previous request if it exists
     if (cancelTokenSource) {
       cancelTokenSource.cancel('Operation canceled due to new request.');
     }
@@ -279,14 +298,13 @@ function App() {
     setCancelTokenSource(newCancelToken);
 
     if (!existingTranslation || existingTranslation.english !== english) {
-      // Reset all fields if the English text no longer matches the existing translation
       setNewTranslation({ key: '', english, arabic: '', tags: [] });
       setExistingTranslation(null);
     } else {
       setNewTranslation({ ...newTranslation, english });
     }
 
-    debouncedCheckEnglishTranslation(english, newCancelToken); // Pass the cancel token to the debounced function
+    debouncedCheckEnglishTranslation(english, newCancelToken);
   };
 
   return (
@@ -295,10 +313,8 @@ function App() {
         Translation Management
       </Typography>
 
-      {/* Toast container to show messages */}
       <ToastContainer />
 
-      {/* Add Translation Button */}
       <Button
         variant="contained"
         color="primary"
@@ -309,7 +325,6 @@ function App() {
         Add Translation
       </Button>
 
-      {/* Bulk Upload Button */}
       <Button
         variant="outlined"
         color="secondary"
@@ -319,7 +334,6 @@ function App() {
         Bulk Upload
       </Button>
 
-      {/* Search Bar */}
       <TextField
         label="Search"
         value={searchTerm}
@@ -335,7 +349,6 @@ function App() {
         }}
       />
 
-      {/* Translation List */}
       <TableContainer component={Paper}>
         <Table>
           <TableHead>
@@ -349,7 +362,10 @@ function App() {
           </TableHead>
           <TableBody>
             {filteredTranslations.map((translation) => (
-              <StyledTableRow key={translation.key}>
+              <StyledTableRow
+                key={translation.key}
+                style={{ backgroundColor: (!translation.arabic || translation.arabic.trim() === '') ? '#ffcccc' : 'inherit' }} // Light red for missing Arabic translations
+              >
                 <StyledTableCell onDoubleClick={() => handleDoubleClick(translation.key)}>
                   {translation.key}
                 </StyledTableCell>
@@ -416,7 +432,7 @@ function App() {
                       <IconButton size="small" onClick={() => setEditing(translation)}>
                         <Edit />
                       </IconButton>
-                      <IconButton size="small" onClick={() => deleteTranslation(translation.key)}>
+                      <IconButton size="small" onClick={() => handleDeleteClick(translation.key)}>
                         <Delete />
                       </IconButton>
                     </>
@@ -428,7 +444,6 @@ function App() {
         </Table>
       </TableContainer>
 
-      {/* Add Translation Dialog */}
       <Dialog open={openAddTranslation} onClose={handleCloseAddTranslation} maxWidth="md" fullWidth>
         <DialogTitle>Add New Translation</DialogTitle>
         <DialogContent>
@@ -533,7 +548,6 @@ function App() {
         </DialogActions>
       </Dialog>
 
-      {/* Bulk Upload Dialog */}
       <Dialog open={openBulkUpload} onClose={handleCloseBulkUpload} maxWidth="md" fullWidth>
         <DialogTitle>Bulk Upload Translations</DialogTitle>
         <DialogContent>
@@ -603,6 +617,22 @@ function App() {
           </Button>
           <Button onClick={handleJsonUpload} color="primary">
             Upload
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmationOpen} onClose={cancelDelete}>
+        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogContent>
+          <DialogContentText>Are you sure you want to delete this translation?</DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={cancelDelete} color="secondary">
+            Cancel
+          </Button>
+          <Button onClick={confirmDelete} color="primary">
+            Delete
           </Button>
         </DialogActions>
       </Dialog>
